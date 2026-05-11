@@ -142,18 +142,24 @@ body { font-family:'Noto Sans TC',-apple-system,sans-serif; background:#f2efe9; 
 .ov-table tr:last-child td { border-bottom:none; }
 .ov-table tr:hover td { background:#faf8f5; }
 .ov-table tr:hover td.sticky-col { background:#faf8f5; }
-.ov-cell { display:inline-block; width:22px; height:22px; line-height:22px; border-radius:5px; font-size:11px; font-weight:600; }
-.ov-cell.present { background:#edf8f2; color:#2a8a52; }
-.ov-cell.leave   { background:#fdf3e3; color:#b86820; }
-.ov-cell.absent  { background:#fdecec; color:#a02020; }
-.ov-cell.none    { color:#ddd; font-size:14px; font-weight:400; }
-.ov-table tfoot td { background:#f7f5f2; font-size:11px; font-weight:600; color:#888; border-top:2px solid #e8e2d8; }
-.ov-table tfoot td.sticky-col { background:#f7f5f2; }
-.ov-table th.c-th { background:#444; color:#777; }
-.ov-table td.c-td { background:#f9f9f9; color:#ddd; }
-.legend { display:flex; gap:16px; font-size:11px; color:#888; flex-wrap:wrap; }
-.legend span { display:flex; align-items:center; gap:5px; }
-.leg-dot { width:12px; height:12px; border-radius:3px; }
+.ov-cell { display:inline-block; width:26px; height:26px; line-height:26px; border-radius:5px; font-size:12px; font-weight:700; text-align:center; }
+.ov-cell.present { background:#27ae60; color:#fff; }
+.ov-cell.leave   { background:#e67e22; color:#fff; }
+.ov-cell.absent  { background:#e74c3c; color:#fff; }
+.ov-cell.none    { background:#f0ece5; color:#ccc; font-size:13px; font-weight:400; }
+/* row striping for readability */
+.ov-table tbody tr:nth-child(even) td { background:#faf8f5; }
+.ov-table tbody tr:nth-child(even) td.sticky-col { background:#faf8f5; }
+.ov-table tbody tr:hover td { background:#f0ece5 !important; }
+.ov-table tbody tr:hover td.sticky-col { background:#f0ece5 !important; }
+.ov-table tfoot td { background:#2c2c2c; color:#fff; font-size:11px; font-weight:600; border-top:2px solid #2c2c2c; }
+.ov-table tfoot td.sticky-col { background:#2c2c2c; color:#fff; }
+.ov-table th.c-th { background:#555; color:#999; }
+.ov-table td.c-td { background:#f5f5f5; }
+.ov-table td.c-td .ov-cell { background:#e8e8e8; color:#bbb; }
+.legend { display:flex; gap:16px; font-size:11px; color:#888; flex-wrap:wrap; align-items:center; }
+.legend span { display:flex; align-items:center; gap:6px; }
+.leg-dot { width:16px; height:16px; border-radius:4px; }
 
 /* STUDENT */
 .student-right { flex:1; overflow-y:auto; padding:24px; display:flex; flex-direction:column; gap:20px; }
@@ -162,7 +168,10 @@ body { font-family:'Noto Sans TC',-apple-system,sans-serif; background:#f2efe9; 
 .lcard { background:#fff; border-radius:10px; border:1.5px solid #e8e2d8; padding:14px 16px; cursor:pointer; transition:all .15s; user-select:none; }
 .lcard:hover { border-color:#2c2c2c; }
 .lcard.sel { border-color:#d4882a; background:#fdf8f0; }
-.lcard.done-leave { border-color:#3aaa6a; background:#f0fdf6; cursor:default; }
+.lcard.done-leave { border-color:#3aaa6a; background:#f0fdf6; cursor:pointer; }
+.lcard.cancel-pending { border-color:#c0392b; background:#fdf0f0; }
+.lcard.cancel-pending .lc-status { color:#c0392b; font-weight:600; }
+.lcard.done-leave .lc-status { color:#3aaa6a; font-weight:600; }
 .lcard.done-other { background:#f9f9f9; border-color:#eee; cursor:default; opacity:.7; }
 .lcard.cancelled-card { background:#f9f9f9; border-color:#eee; cursor:not-allowed; opacity:.45; }
 .lcard .lc-date { font-size:14px; font-weight:700; margin-bottom:3px; }
@@ -284,13 +293,13 @@ create policy "allow all" on members for all using (true) with check (true);
     <h2>週六課程點名</h2>
     <div class="sub">請選擇身份後登入</div>
     <div class="login-tabs">
-      <button class="login-tab active" id="tabT" onclick="switchTab('teacher')">老師</button>
-      <button class="login-tab" id="tabS" onclick="switchTab('student')">學員</button>
+      <button class="login-tab" id="tabT" onclick="switchTab('teacher')">老師</button>
+      <button class="login-tab active" id="tabS" onclick="switchTab('student')">學員</button>
     </div>
-    <div id="teacherForm">
+    <div id="teacherForm" style="display:none">
       <div class="lf"><label>密碼</label><input type="password" id="teacherPwd" placeholder="老師密碼" onkeydown="if(event.key==='Enter')doLogin()"></div>
     </div>
-    <div id="studentForm" style="display:none">
+    <div id="studentForm">
       <div class="lf"><label>姓名</label><select id="studentSel"></select></div>
     </div>
     <div class="login-err" id="loginErr">密碼錯誤，請再試一次</div>
@@ -409,6 +418,7 @@ let curDate = '';
 let curView = 'single';
 let role = null, user = null, loginTab = 'teacher';
 let pendingLeave = new Set();
+let pendingCancel = new Set();
 let realtimeChannel = null;
 
 // ═══════════════════════════════════════════════
@@ -570,6 +580,8 @@ function switchTab(t){
   document.getElementById('studentForm').style.display=t==='student'?'':'none';
   document.getElementById('loginErr').style.display='none';
 }
+// 預設學員 tab
+loginTab='student';
 
 function doLogin(){
   document.getElementById('loginErr').style.display='none';
@@ -597,6 +609,7 @@ function doLogin(){
     document.getElementById('teacherRight').style.display='none';
     document.getElementById('studentRight').style.display='flex';
     pendingLeave=new Set();
+    pendingCancel=new Set();
   }
   renderAll();
 }
@@ -737,7 +750,7 @@ function renderOverview(){
     const p=members.filter(x=>r[x]==='present').length;
     const l=members.filter(x=>r[x]==='leave').length;
     const a=members.filter(x=>r[x]==='absent').length;
-    return `<td><span style="color:#3aaa6a">${p}</span>/<span style="color:#d4882a">${l}</span>/<span style="color:#c0392b">${a}</span></td>`;
+    return `<td style="background:#2c2c2c"><span style="color:#2ecc71;font-weight:700">${p}</span><span style="color:#666">/</span><span style="color:#e67e22;font-weight:700">${l}</span><span style="color:#666">/</span><span style="color:#e74c3c;font-weight:700">${a}</span></td>`;
   }).join('');
   const bodyRows=members.map((p,i)=>{
     const cells=dates.map(({date_str:ds,cancelled})=>{
@@ -752,18 +765,18 @@ function renderOverview(){
       <td class="sticky-col"><span style="color:#ccc;font-size:11px;margin-right:6px">${i+1}</span>${p}</td>
       ${cells}
       <td style="border-left:1px solid #f0ece5;font-size:11px;white-space:nowrap">
-        <span style="color:#3aaa6a;font-weight:700">${pc}</span>/<span style="color:#d4882a">${lc}</span>/<span style="color:#c0392b">${ac}</span><span style="color:#ddd"> /${nc.length}</span>
+        <span style="color:#27ae60;font-weight:700">${pc}</span><span style="color:#ccc">/</span><span style="color:#e67e22;font-weight:700">${lc}</span><span style="color:#ccc">/</span><span style="color:#e74c3c;font-weight:700">${ac}</span><span style="color:#ccc"> /${nc.length}</span>
       </td>
     </tr>`;
   }).join('');
   rp.innerHTML=`
     <div><span class="view-title">全期總覽</span><span class="view-sub">${dates.length} 個日期・${members.length} 位學員</span></div>
     <div class="legend">
-      <span><span class="leg-dot" style="background:#edf8f2"></span>出 出席</span>
-      <span><span class="leg-dot" style="background:#fdf3e3"></span>假 請假</span>
-      <span><span class="leg-dot" style="background:#fdecec"></span>缺 缺席</span>
-      <span style="color:#ddd">· 未標記</span>
-      <span style="color:#ccc;font-size:10px">右欄：出席/請假/缺席</span>
+      <span><span class="leg-dot" style="background:#27ae60"></span><span style="color:#27ae60;font-weight:600">出 出席</span></span>
+      <span><span class="leg-dot" style="background:#e67e22"></span><span style="color:#e67e22;font-weight:600">假 請假</span></span>
+      <span><span class="leg-dot" style="background:#e74c3c"></span><span style="color:#e74c3c;font-weight:600">缺 缺席</span></span>
+      <span><span class="leg-dot" style="background:#f0ece5;border:1px solid #ddd"></span><span style="color:#bbb">· 未標記</span></span>
+      <span style="color:#ccc;font-size:10px">右欄小計：出席 / 請假 / 缺席</span>
     </div>
     <div class="ov-wrap">
       <table class="ov-table">
@@ -788,13 +801,16 @@ function renderStudentRight(){
     const s=(att[ds]||{})[user];
     const isLeave=s==='leave', isPending=pendingLeave.has(ds);
     const isDoneOther=s==='present'||s==='absent';
+    const isCancelPending=pendingCancel.has(ds);
     let cls='lcard', st='點選登記請假';
     if(cancelled){ cls+=' cancelled-card'; st='停課'; }
-    else if(isLeave){ cls+=' done-leave'; st='已登記請假'; }
     else if(isDoneOther){ cls+=' done-other'; st=s==='present'?'已出席':'已缺席'; }
+    else if(isLeave && isCancelPending){ cls+=' cancel-pending'; st='點確認取消請假'; }
+    else if(isLeave){ cls+=' done-leave'; st='已請假　點此取消'; }
     else if(isPending){ cls+=' sel'; st='已選取'; }
-    const clickable=!cancelled&&!isLeave&&!isDoneOther;
-    return `<div class="${cls}" data-ds="${ds}" data-clickable="${clickable}">
+    // clickable: 未請假可選、已請假可取消；出席/缺席/停課不可動
+    const clickable=!cancelled&&!isDoneOther;
+    return `<div class="${cls}" data-ds="${ds}" data-clickable="${clickable}" data-isleave="${isLeave}">
       <div class="lc-date">${dispFull(ds)}</div>
       <div class="lc-status">${st}</div>
     </div>`;
@@ -802,12 +818,23 @@ function renderStudentRight(){
   grid.querySelectorAll('.lcard[data-clickable="true"]').forEach(card=>{
     card.addEventListener('click',()=>{
       const ds=card.dataset.ds;
-      if(pendingLeave.has(ds)) pendingLeave.delete(ds); else pendingLeave.add(ds);
+      const isLeave=card.dataset.isleave==='true';
+      if(isLeave){
+        // toggle cancel-pending
+        if(pendingCancel.has(ds)) pendingCancel.delete(ds); else pendingCancel.add(ds);
+      } else {
+        if(pendingLeave.has(ds)) pendingLeave.delete(ds); else pendingLeave.add(ds);
+      }
       renderStudentRight();
     });
   });
-  document.getElementById('submitLeaveBtn').disabled=pendingLeave.size===0;
-  document.getElementById('leaveCount').textContent=pendingLeave.size?`已選取 ${pendingLeave.size} 個日期`:'尚未選取';
+  // submit leave button
+  document.getElementById('submitLeaveBtn').disabled=pendingLeave.size===0&&pendingCancel.size===0;
+  let countMsg='尚未選取';
+  if(pendingLeave.size&&pendingCancel.size) countMsg=`新增 ${pendingLeave.size} 筆・取消 ${pendingCancel.size} 筆`;
+  else if(pendingLeave.size) countMsg=`已選取 ${pendingLeave.size} 個日期`;
+  else if(pendingCancel.size) countMsg=`取消請假 ${pendingCancel.size} 個日期`;
+  document.getElementById('leaveCount').textContent=countMsg;
   const confirmed=dates.filter(({date_str:ds,cancelled})=>!cancelled&&(att[ds]||{})[user]==='leave');
   const sum=document.getElementById('leaveSummary');
   if(confirmed.length){
@@ -819,14 +846,22 @@ function renderStudentRight(){
 }
 
 async function submitLeave(){
-  if(!pendingLeave.size) return;
-  showLoading('儲存請假中...');
-  const rows=[...pendingLeave].map(ds=>({ date_str:ds, person:user, status:'leave', updated_at:new Date().toISOString() }));
-  const { error } = await sb.from('attendance').upsert(rows, {onConflict:'date_str,person'});
-  if(!error){
-    pendingLeave.forEach(ds=>{ if(!att[ds]) att[ds]={}; att[ds][user]='leave'; });
-    pendingLeave.clear();
-  } else { alert('儲存失敗：'+error.message); }
+  if(!pendingLeave.size&&!pendingCancel.size) return;
+  showLoading('儲存中...');
+  // 新增請假
+  if(pendingLeave.size){
+    const rows=[...pendingLeave].map(ds=>({ date_str:ds, person:user, status:'leave', updated_at:new Date().toISOString() }));
+    const { error } = await sb.from('attendance').upsert(rows, {onConflict:'date_str,person'});
+    if(!error){ pendingLeave.forEach(ds=>{ if(!att[ds]) att[ds]={}; att[ds][user]='leave'; }); pendingLeave.clear(); }
+    else { alert('儲存失敗：'+error.message); }
+  }
+  // 取消請假（改為 null）
+  if(pendingCancel.size){
+    const rows=[...pendingCancel].map(ds=>({ date_str:ds, person:user, status:null, updated_at:new Date().toISOString() }));
+    const { error } = await sb.from('attendance').upsert(rows, {onConflict:'date_str,person'});
+    if(!error){ pendingCancel.forEach(ds=>{ if(!att[ds]) att[ds]={}; att[ds][user]=null; }); pendingCancel.clear(); }
+    else { alert('取消請假失敗：'+error.message); }
+  }
   hideLoading();
   renderLeft(); renderStudentRight();
 }
