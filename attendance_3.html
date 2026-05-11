@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>週六課程點名系統</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:'Noto Sans TC',-apple-system,sans-serif; background:#f2efe9; color:#2c2c2c; min-height:100vh; font-size:14px; }
+
+/* ── SETUP SCREEN ── */
+#setupScreen { display:none; }
+.setup-box { background:#fff; border-radius:16px; padding:36px 32px; width:100%; max-width:480px; box-shadow:0 20px 60px rgba(0,0,0,.1); }
+.setup-box h2 { font-size:18px; font-weight:700; margin-bottom:6px; letter-spacing:1px; }
+.setup-box .sub { font-size:12px; color:#999; margin-bottom:24px; line-height:1.6; }
+.setup-step { background:#f7f5f2; border-radius:10px; padding:16px 18px; margin-bottom:14px; }
+.setup-step .step-no { font-size:11px; font-weight:700; color:#c8a96e; letter-spacing:1px; margin-bottom:6px; }
+.setup-step p { font-size:12px; color:#666; line-height:1.7; }
+.setup-step code { background:#eee; padding:1px 6px; border-radius:4px; font-family:monospace; font-size:11px; color:#2c2c2c; }
+.setup-field { margin-top:10px; }
+.setup-field label { font-size:11px; color:#888; display:block; margin-bottom:5px; letter-spacing:.5px; text-transform:uppercase; }
+.setup-field input { width:100%; padding:10px 12px; border:1.5px solid #e0dbd0; border-radius:8px; font-size:13px; font-family:monospace; outline:none; background:#fafaf8; }
+.setup-field input:focus { border-color:#2c2c2c; }
+.setup-btn { width:100%; padding:12px; background:#2c2c2c; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; margin-top:16px; letter-spacing:.5px; }
+.setup-btn:hover { background:#444; }
+.setup-err { color:#c0392b; font-size:12px; margin-top:8px; display:none; }
+
+/* ── LOGIN ── */
+#loginOverlay { position:fixed; inset:0; background:rgba(20,18,16,.75); display:none; align-items:center; justify-content:center; z-index:999; }
+#loginOverlay.open { display:flex; }
+.login-box { background:#fff; border-radius:16px; padding:36px 30px; width:320px; box-shadow:0 20px 60px rgba(0,0,0,.15); }
+.login-box h2 { font-size:18px; font-weight:700; margin-bottom:4px; letter-spacing:1px; }
+.login-box .sub { font-size:12px; color:#999; margin-bottom:22px; }
+.login-tabs { display:flex; border:1.5px solid #e0dbd0; border-radius:8px; overflow:hidden; margin-bottom:20px; }
+.login-tab { flex:1; padding:9px; background:#f7f5f2; color:#888; border:none; cursor:pointer; font-size:13px; font-weight:500; transition:background .15s,color .15s; }
+.login-tab.active { background:#2c2c2c; color:#fff; }
+.lf { margin-bottom:14px; }
+.lf label { font-size:11px; color:#888; display:block; margin-bottom:5px; letter-spacing:.5px; text-transform:uppercase; }
+.lf select, .lf input[type=password] { width:100%; padding:10px 12px; border:1.5px solid #e0dbd0; border-radius:8px; font-size:14px; background:#fafaf8; outline:none; transition:border-color .15s; }
+.lf select:focus, .lf input:focus { border-color:#2c2c2c; }
+.login-btn { width:100%; padding:12px; background:#2c2c2c; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; margin-top:6px; letter-spacing:.5px; }
+.login-btn:hover { background:#444; }
+.login-err { color:#c0392b; font-size:12px; margin-top:8px; display:none; }
+
+/* ── HEADER ── */
+.header { background:#2c2c2c; color:#fff; padding:0 24px; height:52px; display:none; align-items:center; justify-content:space-between; }
+.header.show { display:flex; }
+.header h1 { font-size:15px; font-weight:600; letter-spacing:2px; }
+.header-right { display:flex; align-items:center; gap:12px; }
+.sync-dot { width:7px; height:7px; border-radius:50%; background:#555; transition:background .3s; }
+.sync-dot.live { background:#3aaa6a; }
+.sync-dot.syncing { background:#d4882a; }
+.user-badge { font-size:12px; background:rgba(255,255,255,.1); padding:5px 14px; border-radius:20px; display:flex; align-items:center; gap:10px; }
+.logout-btn { font-size:11px; background:rgba(255,255,255,.15); border:none; color:#fff; padding:3px 10px; border-radius:6px; cursor:pointer; }
+.logout-btn:hover { background:rgba(255,255,255,.25); }
+
+/* ── NOTICE ── */
+.notice-bar { padding:9px 24px; font-size:12px; display:none; letter-spacing:.3px; }
+.notice-bar.teacher { background:#f0f8f4; border-bottom:1px solid #d0e8da; color:#2a7a50; }
+.notice-bar.student { background:#fdf8ee; border-bottom:1px solid #e8dfc0; color:#9a7020; }
+
+/* ── APP ── */
+.app { display:none; flex-direction:row; height:calc(100vh - 52px); overflow:hidden; }
+.app.show { display:flex; }
+
+/* ── LEFT ── */
+.left { width:320px; min-width:260px; background:#fff; border-right:1px solid #e8e2d8; display:flex; flex-direction:column; flex-shrink:0; }
+.left-hd { padding:14px 18px 12px; border-bottom:1px solid #f0ece5; display:flex; align-items:center; gap:8px; }
+.left-hd-title { font-size:11px; font-weight:600; color:#aaa; letter-spacing:1px; text-transform:uppercase; }
+.left-hd-date { font-size:13px; font-weight:600; color:#2c2c2c; flex:1; }
+.add-btn { padding:4px 12px; border-radius:6px; border:1.5px solid #c8a96e; background:transparent; color:#c8a96e; cursor:pointer; font-size:11px; font-weight:600; letter-spacing:.5px; white-space:nowrap; transition:all .15s; }
+.add-btn:hover { background:#c8a96e; color:#fff; }
+.plist { flex:1; overflow-y:auto; }
+.prow { display:flex; align-items:center; padding:10px 18px; border-bottom:1px solid #f5f2ec; gap:8px; transition:background .1s; }
+.prow:hover { background:#faf8f5; }
+.pidx { font-size:11px; color:#ccc; width:16px; text-align:right; flex-shrink:0; }
+.pname { flex:1; font-size:14px; font-weight:500; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pdot { width:7px; height:7px; border-radius:50%; background:#e0e0e0; flex-shrink:0; transition:background .2s; }
+.pdot.present { background:#3aaa6a; }
+.pdot.leave   { background:#d4882a; }
+.pdot.absent  { background:#c0392b; }
+.rbtns { display:flex; gap:3px; flex-shrink:0; }
+.rb { padding:4px 8px; border-radius:5px; border:1.5px solid #e0e0e0; background:#fafafa; cursor:pointer; font-size:11px; font-weight:500; transition:all .12s; color:#666; }
+.rb:hover { border-color:#999; color:#2c2c2c; }
+.rb.p.on { background:#3aaa6a; color:#fff; border-color:#3aaa6a; }
+.rb.l.on { background:#d4882a; color:#fff; border-color:#d4882a; }
+.rb.a.on { background:#c0392b; color:#fff; border-color:#c0392b; }
+.s-lbl { font-size:11px; color:#bbb; }
+.s-lbl.present { color:#3aaa6a; font-weight:600; }
+.s-lbl.leave   { color:#d4882a; font-weight:600; }
+.s-lbl.absent  { color:#c0392b; font-weight:600; }
+
+/* ── RIGHT ── */
+.right { flex:1; display:flex; flex-direction:column; overflow:hidden; background:#f2efe9; }
+.view-bar { background:#fff; border-bottom:1px solid #e8e2d8; display:flex; align-items:center; padding:0 24px; flex-shrink:0; }
+.vtab { padding:14px 20px; border:none; background:transparent; color:#aaa; cursor:pointer; font-size:13px; font-weight:500; border-bottom:2px solid transparent; margin-bottom:-1px; transition:all .15s; letter-spacing:.3px; }
+.vtab.active { color:#2c2c2c; border-bottom-color:#2c2c2c; font-weight:600; }
+.vtab:hover:not(.active) { color:#555; }
+.date-bar { background:#fff; border-bottom:1px solid #e8e2d8; padding:10px 20px; display:flex; gap:6px; flex-wrap:wrap; align-items:center; flex-shrink:0; overflow-x:auto; }
+.dt { flex-shrink:0; padding:6px 12px; border-radius:6px; border:1.5px solid #e0dbd0; background:#fafafa; cursor:pointer; font-size:12px; color:#666; transition:all .15s; white-space:nowrap; text-align:center; line-height:1.4; }
+.dt:hover { border-color:#2c2c2c; color:#2c2c2c; }
+.dt.active { background:#2c2c2c; color:#fff; border-color:#2c2c2c; }
+.dt.cancelled { background:#f5f5f5; color:#ccc; text-decoration:line-through; cursor:not-allowed; }
+.add-date-btn { flex-shrink:0; padding:6px 12px; border-radius:6px; border:1.5px dashed #c8a96e; background:transparent; color:#c8a96e; cursor:pointer; font-size:12px; white-space:nowrap; transition:all .15s; }
+.add-date-btn:hover { background:#c8a96e; color:#fff; }
+.right-body { flex:1; overflow-y:auto; padding:24px; display:flex; flex-direction:column; gap:20px; }
+
+/* SINGLE DAY */
+.view-title { font-size:18px; font-weight:700; letter-spacing:.5px; }
+.view-sub { font-size:12px; color:#aaa; font-weight:400; margin-left:8px; }
+.stats { display:flex; gap:12px; flex-wrap:wrap; }
+.sc { background:#fff; border-radius:10px; padding:14px 20px; border:1px solid #e8e2d8; min-width:90px; }
+.sc .num { font-size:26px; font-weight:800; line-height:1; }
+.sc .lbl { font-size:11px; color:#aaa; margin-top:4px; letter-spacing:.5px; }
+.sc-p .num { color:#3aaa6a; }
+.sc-l .num { color:#d4882a; }
+.sc-a .num { color:#c0392b; }
+.sc-u .num { color:#ccc; }
+.group-sec h3 { font-size:11px; font-weight:600; color:#bbb; margin-bottom:10px; letter-spacing:1.5px; text-transform:uppercase; }
+.chips { display:flex; flex-wrap:wrap; gap:7px; }
+.chip { padding:5px 14px; border-radius:20px; font-size:13px; font-weight:500; }
+.chip.present { background:#edf8f2; color:#2a8a52; }
+.chip.leave   { background:#fdf3e3; color:#b86820; }
+.chip.absent  { background:#fdecec; color:#a02020; }
+.chip.none    { background:#f0f0f0; color:#bbb; }
+.action-bar { display:flex; gap:10px; flex-wrap:wrap; margin-top:auto; padding-top:12px; border-top:1px solid #e8e2d8; }
+.ebtn { padding:9px 18px; border-radius:7px; border:1.5px solid #2c2c2c; background:#2c2c2c; color:#fff; cursor:pointer; font-size:12px; font-weight:600; letter-spacing:.5px; transition:opacity .15s; }
+.ebtn.outline { background:transparent; color:#2c2c2c; }
+.ebtn.gold { border-color:#c8a96e; background:#c8a96e; color:#fff; }
+.ebtn:hover { opacity:.8; }
+.cancelled-screen { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; color:#bbb; }
+.cancelled-screen .big { font-size:14px; font-weight:600; letter-spacing:1px; }
+
+/* OVERVIEW */
+.ov-wrap { overflow-x:auto; border-radius:10px; border:1px solid #e8e2d8; }
+.ov-table { border-collapse:collapse; width:100%; background:#fff; font-size:12px; }
+.ov-table th { background:#2c2c2c; color:#fff; padding:10px 12px; text-align:center; white-space:nowrap; font-weight:500; }
+.ov-table th.sticky-col { text-align:left; position:sticky; left:0; z-index:3; }
+.ov-table td { padding:9px 12px; border-bottom:1px solid #f5f2ec; text-align:center; white-space:nowrap; }
+.ov-table td.sticky-col { text-align:left; font-weight:500; background:#fff; position:sticky; left:0; z-index:1; border-right:1px solid #f0ece5; }
+.ov-table tr:last-child td { border-bottom:none; }
+.ov-table tr:hover td { background:#faf8f5; }
+.ov-table tr:hover td.sticky-col { background:#faf8f5; }
+.ov-cell { display:inline-block; width:22px; height:22px; line-height:22px; border-radius:5px; font-size:11px; font-weight:600; }
+.ov-cell.present { background:#edf8f2; color:#2a8a52; }
+.ov-cell.leave   { background:#fdf3e3; color:#b86820; }
+.ov-cell.absent  { background:#fdecec; color:#a02020; }
+.ov-cell.none    { color:#ddd; font-size:14px; font-weight:400; }
+.ov-table tfoot td { background:#f7f5f2; font-size:11px; font-weight:600; color:#888; border-top:2px solid #e8e2d8; }
+.ov-table tfoot td.sticky-col { background:#f7f5f2; }
+.ov-table th.c-th { background:#444; color:#777; }
+.ov-table td.c-td { background:#f9f9f9; color:#ddd; }
+.legend { display:flex; gap:16px; font-size:11px; color:#888; flex-wrap:wrap; }
+.legend span { display:flex; align-items:center; gap:5px; }
+.leg-dot { width:12px; height:12px; border-radius:3px; }
+
+/* STUDENT */
+.student-right { flex:1; overflow-y:auto; padding:24px; display:flex; flex-direction:column; gap:20px; }
+.student-right h2 { font-size:16px; font-weight:700; letter-spacing:.5px; }
+.leave-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:10px; }
+.lcard { background:#fff; border-radius:10px; border:1.5px solid #e8e2d8; padding:14px 16px; cursor:pointer; transition:all .15s; user-select:none; }
+.lcard:hover { border-color:#2c2c2c; }
+.lcard.sel { border-color:#d4882a; background:#fdf8f0; }
+.lcard.done-leave { border-color:#3aaa6a; background:#f0fdf6; cursor:default; }
+.lcard.done-other { background:#f9f9f9; border-color:#eee; cursor:default; opacity:.7; }
+.lcard.cancelled-card { background:#f9f9f9; border-color:#eee; cursor:not-allowed; opacity:.45; }
+.lcard .lc-date { font-size:14px; font-weight:700; margin-bottom:3px; }
+.lcard .lc-status { font-size:11px; color:#bbb; letter-spacing:.3px; }
+.lcard.sel .lc-status { color:#d4882a; font-weight:600; }
+.lcard.done-leave .lc-status { color:#3aaa6a; font-weight:600; }
+.leave-actions { display:flex; align-items:center; gap:14px; }
+.submit-btn { padding:10px 22px; background:#2c2c2c; color:#fff; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; letter-spacing:.5px; }
+.submit-btn:disabled { background:#e0e0e0; color:#bbb; cursor:not-allowed; }
+.submit-btn:not(:disabled):hover { background:#444; }
+.leave-count { font-size:12px; color:#aaa; }
+.leave-summary { background:#fff; border-radius:10px; border:1px solid #e8e2d8; padding:16px 18px; }
+.leave-summary h3 { font-size:11px; font-weight:600; color:#bbb; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:10px; }
+.leave-tags { display:flex; flex-wrap:wrap; gap:7px; }
+.leave-tag { background:#2c2c2c; color:#fff; font-size:12px; padding:4px 12px; border-radius:20px; }
+
+/* MODALS */
+.modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.4); display:none; align-items:center; justify-content:center; z-index:900; }
+.modal-bg.open { display:flex; }
+.modal { background:#fff; border-radius:14px; padding:28px 26px; width:300px; box-shadow:0 10px 40px rgba(0,0,0,.12); }
+.modal h3 { font-size:16px; font-weight:700; margin-bottom:14px; letter-spacing:.5px; }
+.modal-hint { font-size:11px; color:#bbb; margin-bottom:10px; }
+.modal input[type=text], .modal input[type=date] { width:100%; padding:10px 12px; border:1.5px solid #e0dbd0; border-radius:8px; font-size:14px; outline:none; margin-bottom:12px; }
+.modal input:focus { border-color:#2c2c2c; }
+.modal-check { display:flex; align-items:center; gap:7px; font-size:13px; color:#666; margin-bottom:16px; cursor:pointer; }
+.modal-btns { display:flex; gap:8px; }
+.mbt { flex:1; padding:10px; border-radius:8px; border:none; cursor:pointer; font-size:13px; font-weight:600; }
+.mbt.ok { background:#2c2c2c; color:#fff; }
+.mbt.cancel { background:#f2efe9; color:#666; }
+.mbt:hover { opacity:.85; }
+
+/* LOADING */
+.loading-overlay { position:fixed; inset:0; background:rgba(242,239,233,.9); display:flex; align-items:center; justify-content:center; z-index:9000; flex-direction:column; gap:12px; font-size:13px; color:#888; display:none; }
+.spinner { width:28px; height:28px; border:3px solid #e0dbd0; border-top-color:#2c2c2c; border-radius:50%; animation:spin .7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+::-webkit-scrollbar { width:5px; height:5px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:#ddd; border-radius:3px; }
+
+@media(max-width:640px){
+  .app { flex-direction:column; height:auto; }
+  .left { width:100%; max-height:40vh; }
+  .leave-grid { grid-template-columns:1fr 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div id="loadingText">資料同步中...</div>
+</div>
+
+<!-- SETUP SCREEN -->
+<div id="setupScreen">
+  <div class="setup-box">
+    <h2>初次設定</h2>
+    <div class="sub">此系統需要連接 Supabase 資料庫才能讓所有成員資料即時同步。<br>請依以下步驟完成設定（只需設定一次）。</div>
+
+    <div class="setup-step">
+      <div class="step-no">步驟 1　建立免費資料庫</div>
+      <p>前往 <code>supabase.com</code> → New project → 記下 Project URL 和 anon key</p>
+    </div>
+
+    <div class="setup-step">
+      <div class="step-no">步驟 2　建立資料表</div>
+      <p>在 Supabase 後台點 <code>SQL Editor</code>，貼上以下 SQL 執行：</p>
+      <div style="margin-top:8px;background:#f0ece5;border-radius:8px;padding:12px;font-family:monospace;font-size:11px;line-height:1.7;color:#444;cursor:pointer;position:relative;" onclick="copySQL(this)" title="點擊複製">
+        <span style="position:absolute;top:8px;right:10px;font-size:10px;color:#c8a96e;font-family:sans-serif">點擊複製</span>
+create table attendance (
+  id uuid primary key default gen_random_uuid(),
+  date_str text not null,
+  person text not null,
+  status text,
+  updated_at timestamptz default now(),
+  unique(date_str, person)
+);
+create table course_dates (
+  id uuid primary key default gen_random_uuid(),
+  date_str text unique not null,
+  cancelled boolean default false
+);
+create table members (
+  id uuid primary key default gen_random_uuid(),
+  name text unique not null,
+  sort_order int default 0
+);
+alter table attendance enable row level security;
+alter table course_dates enable row level security;
+alter table members enable row level security;
+create policy "allow all" on attendance for all using (true) with check (true);
+create policy "allow all" on course_dates for all using (true) with check (true);
+create policy "allow all" on members for all using (true) with check (true);
+      </div>
+    </div>
+
+    <div class="setup-step">
+      <div class="step-no">步驟 3　填入連線資訊</div>
+      <div class="setup-field">
+        <label>Supabase Project URL</label>
+        <input type="text" id="cfgUrl" placeholder="https://xxxxxxxx.supabase.co">
+      </div>
+      <div class="setup-field" style="margin-top:10px">
+        <label>Supabase Anon Key</label>
+        <input type="text" id="cfgKey" placeholder="eyJhbGci...">
+      </div>
+    </div>
+
+    <div class="setup-err" id="setupErr">連線失敗，請確認 URL 和 Key 是否正確</div>
+    <button class="setup-btn" onclick="initSupabase()">連線並進入系統</button>
+  </div>
+</div>
+
+<!-- LOGIN -->
+<div id="loginOverlay">
+  <div class="login-box">
+    <h2>週六課程點名</h2>
+    <div class="sub">請選擇身份後登入</div>
+    <div class="login-tabs">
+      <button class="login-tab active" id="tabT" onclick="switchTab('teacher')">老師</button>
+      <button class="login-tab" id="tabS" onclick="switchTab('student')">學員</button>
+    </div>
+    <div id="teacherForm">
+      <div class="lf"><label>密碼</label><input type="password" id="teacherPwd" placeholder="老師密碼" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    </div>
+    <div id="studentForm" style="display:none">
+      <div class="lf"><label>姓名</label><select id="studentSel"></select></div>
+    </div>
+    <div class="login-err" id="loginErr">密碼錯誤，請再試一次</div>
+    <button class="login-btn" onclick="doLogin()">進入系統</button>
+  </div>
+</div>
+
+<!-- HEADER -->
+<div id="appHeader" class="header">
+  <h1>週六課程點名系統</h1>
+  <div class="header-right">
+    <div class="sync-dot" id="syncDot" title="同步狀態"></div>
+    <div class="user-badge">
+      <span id="headerUser"></span>
+      <button class="logout-btn" onclick="doLogout()">登出</button>
+    </div>
+  </div>
+</div>
+
+<div class="notice-bar" id="noticeBar"></div>
+
+<!-- APP -->
+<div class="app" id="app">
+  <div class="left">
+    <div class="left-hd">
+      <span class="left-hd-title">人員名單</span>
+      <span class="left-hd-date" id="leftDate"></span>
+      <button class="add-btn" id="addMemberBtn" style="display:none" onclick="openModal('modalMember')">新增人員</button>
+    </div>
+    <div class="plist" id="personList"></div>
+  </div>
+
+  <div class="right" id="teacherRight" style="display:none">
+    <div class="view-bar">
+      <button class="vtab active" id="vtab-single" onclick="setView('single')">單日點名</button>
+      <button class="vtab" id="vtab-overview" onclick="setView('overview')">全期總覽</button>
+    </div>
+    <div class="date-bar" id="dateBar"></div>
+    <div class="right-body" id="rightBody"></div>
+  </div>
+
+  <div class="student-right" id="studentRight" style="display:none">
+    <div>
+      <h2>請假登記</h2>
+      <p style="font-size:12px;color:#aaa;margin-top:4px">選取要請假的日期，可多選後一次確認送出。</p>
+    </div>
+    <div class="leave-grid" id="leaveGrid"></div>
+    <div class="leave-actions">
+      <button class="submit-btn" id="submitLeaveBtn" onclick="submitLeave()" disabled>確認請假</button>
+      <span class="leave-count" id="leaveCount">尚未選取</span>
+    </div>
+    <div class="leave-summary" id="leaveSummary" style="display:none">
+      <h3>已登記請假</h3>
+      <div class="leave-tags" id="leaveTags"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALS -->
+<div class="modal-bg" id="modalDate">
+  <div class="modal">
+    <h3>新增課程日期</h3>
+    <div class="modal-hint">格式 YYYY-MM-DD</div>
+    <input type="date" id="inputDate">
+    <label class="modal-check"><input type="checkbox" id="inputCancelled"> 標記為停課</label>
+    <div class="modal-btns">
+      <button class="mbt cancel" onclick="closeModal('modalDate')">取消</button>
+      <button class="mbt ok" onclick="confirmDate()">新增</button>
+    </div>
+  </div>
+</div>
+<div class="modal-bg" id="modalMember">
+  <div class="modal">
+    <h3>新增人員</h3>
+    <input type="text" id="inputMember" placeholder="姓名" maxlength="20" onkeydown="if(event.key==='Enter')confirmMember()">
+    <div class="modal-btns">
+      <button class="mbt cancel" onclick="closeModal('modalMember')">取消</button>
+      <button class="mbt ok" onclick="confirmMember()">新增</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+// CONFIG  ← 請在這裡填入你的 Supabase 資訊
+// ═══════════════════════════════════════════════
+const PWD = '1234';
+const SUPABASE_URL = 'https://iblcznelqtmfsxwnxish.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlibGN6bmVscXRtZnN4d254aXNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0ODQ0ODQsImV4cCI6MjA5NDA2MDQ4NH0.3BcqytKkh9aLi9G6zkcvLU1VcZYy8ODEpx4VwtGzHio';
+
+const DEFAULT_DATES = [
+  {date_str:'2026-05-16',cancelled:false},
+  {date_str:'2026-05-23',cancelled:false},
+  {date_str:'2026-05-30',cancelled:false},
+  {date_str:'2026-06-06',cancelled:false},
+  {date_str:'2026-06-13',cancelled:false},
+  {date_str:'2026-06-20',cancelled:true},
+  {date_str:'2026-06-27',cancelled:false},
+  {date_str:'2026-07-04',cancelled:false},
+  {date_str:'2026-07-11',cancelled:false},
+  {date_str:'2026-07-18',cancelled:false},
+  {date_str:'2026-07-25',cancelled:false},
+  {date_str:'2026-08-01',cancelled:false},
+  {date_str:'2026-08-08',cancelled:false},
+];
+const DEFAULT_MEMBERS = ['冠銘','雅惠','BEN','阿杰','定慧','嘉容','RUI','佳青','子軒','鈺欣','ADAN','VICKY','家科','志捷'];
+
+// ═══════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════
+let sb = null; // supabase client
+let dates = [];   // [{date_str, cancelled}]
+let members = []; // [string]
+let att = {};     // att[date_str][person] = status
+let curDate = '';
+let curView = 'single';
+let role = null, user = null, loginTab = 'teacher';
+let pendingLeave = new Set();
+let realtimeChannel = null;
+
+// ═══════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════
+function disp(ds){
+  const d = new Date(ds+'T00:00:00');
+  return `${d.getMonth()+1}/${d.getDate()}`;
+}
+function dispFull(ds){
+  const d = new Date(ds+'T00:00:00');
+  return `${d.getMonth()+1}/${d.getDate()}（週${'日一二三四五六'[d.getDay()]}）`;
+}
+function showLoading(msg='資料同步中...'){ document.getElementById('loadingText').textContent=msg; document.getElementById('loadingOverlay').style.display='flex'; }
+function hideLoading(){ document.getElementById('loadingOverlay').style.display='none'; }
+function setSyncDot(state){ const d=document.getElementById('syncDot'); d.className='sync-dot'+(state?' '+state:''); }
+function openModal(id){ document.getElementById(id).classList.add('open'); }
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>{ if(e.target===m) m.classList.remove('open'); }));
+
+function copySQL(el){
+  const text = el.innerText.replace('點擊複製','').trim();
+  navigator.clipboard?.writeText(text).then(()=>{ el.querySelector('span').textContent='已複製!'; setTimeout(()=>el.querySelector('span').textContent='點擊複製',2000); });
+}
+
+// ═══════════════════════════════════════════════
+// SETUP & INIT — 自動連線，不需使用者填入
+// ═══════════════════════════════════════════════
+(function(){
+  if(SUPABASE_URL.startsWith('填入')){ 
+    alert('請先在 HTML 檔案的 CONFIG 區塊填入 Supabase URL 和 Key');
+    return;
+  }
+  connectSupabase(SUPABASE_URL, SUPABASE_KEY);
+})();
+
+async function connectSupabase(url, key){
+  showLoading('連線中...');
+  try {
+    sb = supabase.createClient(url, key);
+    const { error } = await sb.from('members').select('count').limit(1);
+    if(error) throw error;
+    await loadAllData();
+    document.getElementById('setupScreen').style.display='none';
+    document.getElementById('loginOverlay').classList.add('open');
+    hideLoading();
+    setupRealtime();
+  } catch(e) {
+    hideLoading();
+    alert('Supabase 連線失敗：' + e.message + '\n\n請確認 HTML 檔案中的 SUPABASE_URL 和 SUPABASE_KEY 是否正確。');
+  }
+}
+
+// ═══════════════════════════════════════════════
+// DATA LOADING
+// ═══════════════════════════════════════════════
+async function loadAllData(){
+  const [datesRes, membersRes, attRes] = await Promise.all([
+    sb.from('course_dates').select('*').order('date_str'),
+    sb.from('members').select('*').order('sort_order'),
+    sb.from('attendance').select('*'),
+  ]);
+
+  // Seed default data if empty
+  if(!datesRes.data?.length){
+    await sb.from('course_dates').insert(DEFAULT_DATES);
+    const { data } = await sb.from('course_dates').select('*').order('date_str');
+    dates = data || DEFAULT_DATES;
+  } else {
+    dates = datesRes.data;
+  }
+
+  if(!membersRes.data?.length){
+    const inserts = DEFAULT_MEMBERS.map((name,i)=>({name,sort_order:i}));
+    await sb.from('members').insert(inserts);
+    members = DEFAULT_MEMBERS;
+  } else {
+    members = membersRes.data.map(m=>m.name);
+  }
+
+  // Build att map
+  att = {};
+  (attRes.data||[]).forEach(row=>{
+    if(!att[row.date_str]) att[row.date_str]={};
+    att[row.date_str][row.person] = row.status;
+  });
+
+  // Ensure all cells exist in local cache
+  dates.forEach(({date_str})=>{
+    if(!att[date_str]) att[date_str]={};
+    members.forEach(p=>{ if(!(p in att[date_str])) att[date_str][p]=null; });
+  });
+
+  curDate = dates.find(x=>!x.cancelled)?.date_str || dates[0]?.date_str || '';
+  refreshSel();
+}
+
+// ═══════════════════════════════════════════════
+// REALTIME
+// ═══════════════════════════════════════════════
+function setupRealtime(){
+  if(realtimeChannel) sb.removeChannel(realtimeChannel);
+  realtimeChannel = sb.channel('attendance-sync')
+    .on('postgres_changes',{event:'*',schema:'public',table:'attendance'}, payload=>{
+      setSyncDot('syncing');
+      const row = payload.new || payload.old;
+      if(row?.date_str && row?.person){
+        if(!att[row.date_str]) att[row.date_str]={};
+        att[row.date_str][row.person] = payload.eventType==='DELETE' ? null : row.status;
+      }
+      setSyncDot('live');
+      if(role) renderAll();
+    })
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'course_dates'}, async ()=>{
+      const {data}=await sb.from('course_dates').select('*').order('date_str');
+      dates=data||[];
+      members.forEach(p=>dates.forEach(({date_str})=>{ if(!att[date_str]) att[date_str]={}; if(!(p in att[date_str])) att[date_str][p]=null; }));
+      if(role) renderAll();
+    })
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'members'}, async ()=>{
+      const {data}=await sb.from('members').select('*').order('sort_order');
+      members=data.map(m=>m.name);
+      dates.forEach(({date_str})=>{ if(!att[date_str]) att[date_str]={}; members.forEach(p=>{ if(!(p in att[date_str])) att[date_str][p]=null; }); });
+      refreshSel();
+      if(role) renderAll();
+    })
+    .subscribe(status=>{ setSyncDot(status==='SUBSCRIBED'?'live':''); });
+}
+
+// ═══════════════════════════════════════════════
+// WRITE TO DB
+// ═══════════════════════════════════════════════
+async function writeStatus(date_str, person, status){
+  setSyncDot('syncing');
+  const { error } = await sb.from('attendance').upsert(
+    { date_str, person, status, updated_at: new Date().toISOString() },
+    { onConflict: 'date_str,person' }
+  );
+  if(!error){ att[date_str][person]=status; setSyncDot('live'); }
+  else { alert('儲存失敗：'+error.message); setSyncDot(''); }
+}
+
+// ═══════════════════════════════════════════════
+// LOGIN / LOGOUT
+// ═══════════════════════════════════════════════
+function refreshSel(){
+  const sel = document.getElementById('studentSel');
+  const cur = sel.value;
+  sel.innerHTML='';
+  members.forEach(p=>{ const o=document.createElement('option'); o.value=o.textContent=p; sel.appendChild(o); });
+  if(members.includes(cur)) sel.value=cur;
+}
+
+function switchTab(t){
+  loginTab=t;
+  document.getElementById('tabT').classList.toggle('active',t==='teacher');
+  document.getElementById('tabS').classList.toggle('active',t==='student');
+  document.getElementById('teacherForm').style.display=t==='teacher'?'':'none';
+  document.getElementById('studentForm').style.display=t==='student'?'':'none';
+  document.getElementById('loginErr').style.display='none';
+}
+
+function doLogin(){
+  document.getElementById('loginErr').style.display='none';
+  if(loginTab==='teacher'){
+    if(document.getElementById('teacherPwd').value!==PWD){ document.getElementById('loginErr').style.display='block'; return; }
+    role='teacher'; user='老師';
+  } else {
+    role='student'; user=document.getElementById('studentSel').value;
+  }
+  document.getElementById('loginOverlay').classList.remove('open');
+  document.getElementById('appHeader').classList.add('show');
+  document.getElementById('app').classList.add('show');
+  document.getElementById('headerUser').textContent = role==='teacher'?'老師':user;
+
+  const nb=document.getElementById('noticeBar');
+  if(role==='teacher'){
+    nb.className='notice-bar teacher'; nb.textContent='老師模式　可標記出席、請假、缺席，並可新增人員與課程日期。'; nb.style.display='block';
+    document.getElementById('addMemberBtn').style.display='';
+    document.getElementById('teacherRight').style.display='flex';
+    document.getElementById('studentRight').style.display='none';
+    curView='single';
+  } else {
+    nb.className='notice-bar student'; nb.textContent='學員模式　請在右側選取要請假的日期，確認後送出。'; nb.style.display='block';
+    document.getElementById('addMemberBtn').style.display='none';
+    document.getElementById('teacherRight').style.display='none';
+    document.getElementById('studentRight').style.display='flex';
+    pendingLeave=new Set();
+  }
+  renderAll();
+}
+
+function doLogout(){
+  role=null; user=null;
+  document.getElementById('teacherPwd').value='';
+  document.getElementById('loginErr').style.display='none';
+  document.getElementById('loginOverlay').classList.add('open');
+  document.getElementById('appHeader').classList.remove('show');
+  document.getElementById('app').classList.remove('show');
+  document.getElementById('noticeBar').style.display='none';
+  switchTab('teacher');
+}
+
+// ═══════════════════════════════════════════════
+// VIEW
+// ═══════════════════════════════════════════════
+function setView(v){
+  curView=v;
+  document.getElementById('vtab-single').classList.toggle('active',v==='single');
+  document.getElementById('vtab-overview').classList.toggle('active',v==='overview');
+  document.getElementById('dateBar').style.display=v==='single'?'':'none';
+  renderRight();
+}
+
+function renderDateBar(){
+  const bar=document.getElementById('dateBar');
+  bar.innerHTML=dates.map(({date_str:ds,cancelled})=>{
+    const active=ds===curDate&&!cancelled;
+    return `<button class="dt${active?' active':''}${cancelled?' cancelled':''}" data-ds="${ds}">
+      <div>${disp(ds)}</div>
+      <div style="font-size:10px;color:${active?'rgba(255,255,255,.55)':'#ccc'}">${cancelled?'停課':'週六'}</div>
+    </button>`;
+  }).join('')+`<button class="add-date-btn" id="addDateBtn">+ 新增日期</button>`;
+  bar.querySelectorAll('.dt:not(.cancelled)').forEach(btn=>{
+    btn.addEventListener('click',()=>{ curDate=btn.dataset.ds; renderDateBar(); renderLeft(); renderRight(); });
+  });
+  bar.querySelector('#addDateBtn')?.addEventListener('click',()=>{ document.getElementById('inputDate').value=''; document.getElementById('inputCancelled').checked=false; openModal('modalDate'); });
+}
+
+// ═══════════════════════════════════════════════
+// RENDER LEFT
+// ═══════════════════════════════════════════════
+function renderLeft(){
+  document.getElementById('leftDate').textContent = role==='teacher' ? dispFull(curDate) : '';
+  const rec = att[curDate]||{};
+  const list = document.getElementById('personList');
+  list.innerHTML = members.map((p,i)=>{
+    const s=rec[p]; const isSelf=p===user;
+    let action='';
+    if(role==='teacher'){
+      action=`<div class="rbtns" data-person="${p}">
+        <button class="rb p${s==='present'?' on':''}" data-st="present">出席</button>
+        <button class="rb l${s==='leave'?' on':''}" data-st="leave">請假</button>
+        <button class="rb a${s==='absent'?' on':''}" data-st="absent">缺席</button>
+      </div>`;
+    } else if(isSelf){
+      const lc=dates.filter(({date_str:ds,cancelled})=>!cancelled&&(att[ds]||{})[p]==='leave').length;
+      action=lc?`<span class="s-lbl leave">${lc}日請假</span>`:`<span class="s-lbl">—</span>`;
+    } else {
+      const m={present:'出席',leave:'請假',absent:'缺席'};
+      action=`<span class="s-lbl${s?' '+s:''}">${s?m[s]:'—'}</span>`;
+    }
+    return `<div class="prow">
+      <span class="pidx">${i+1}</span>
+      <span class="pname">${p}${isSelf&&role==='student'?'<span style="font-size:10px;color:#c8a96e;margin-left:4px">（我）</span>':''}</span>
+      <span class="pdot${s?' '+s:''}"></span>
+      ${action}
+    </div>`;
+  }).join('');
+  if(role==='teacher'){
+    list.querySelectorAll('.rbtns').forEach(div=>{
+      const person=div.dataset.person;
+      div.querySelectorAll('button[data-st]').forEach(btn=>{
+        btn.addEventListener('click',async ()=>{
+          const newStatus = (att[curDate]||{})[person]===btn.dataset.st ? null : btn.dataset.st;
+          if(!att[curDate]) att[curDate]={};
+          att[curDate][person]=newStatus; // optimistic
+          renderLeft(); renderRight();
+          await writeStatus(curDate, person, newStatus);
+        });
+      });
+    });
+  }
+}
+
+// ═══════════════════════════════════════════════
+// RENDER RIGHT (TEACHER)
+// ═══════════════════════════════════════════════
+function renderRight(){
+  if(role!=='teacher') return;
+  if(curView==='overview'){ renderOverview(); return; }
+  renderSingle();
+}
+
+function renderSingle(){
+  const rp=document.getElementById('rightBody');
+  const entry=dates.find(x=>x.date_str===curDate);
+  if(!entry){ rp.innerHTML=''; return; }
+  if(entry.cancelled){
+    rp.innerHTML=`<div class="cancelled-screen"><div class="big">${dispFull(curDate)}</div><div style="font-size:12px;color:#ccc">本日停課</div></div>`;
+    return;
+  }
+  const rec=att[curDate]||{};
+  let pres=[],leav=[],abs=[],unm=[];
+  members.forEach(p=>{ const s=rec[p]; if(s==='present')pres.push(p); else if(s==='leave')leav.push(p); else if(s==='absent')abs.push(p); else unm.push(p); });
+  const chips=(arr,cls)=>arr.length?arr.map(n=>`<span class="chip ${cls}">${n}</span>`).join(''):`<span style="font-size:12px;color:#ccc">無</span>`;
+  rp.innerHTML=`
+    <div><span class="view-title">${dispFull(curDate)}</span><span class="view-sub">點名紀錄</span></div>
+    <div class="stats">
+      <div class="sc sc-p"><div class="num">${pres.length}</div><div class="lbl">出席</div></div>
+      <div class="sc sc-l"><div class="num">${leav.length}</div><div class="lbl">請假</div></div>
+      <div class="sc sc-a"><div class="num">${abs.length}</div><div class="lbl">缺席</div></div>
+      <div class="sc sc-u"><div class="num">${unm.length}</div><div class="lbl">未標記</div></div>
+    </div>
+    <div class="group-sec"><h3>出席</h3><div class="chips">${chips(pres,'present')}</div></div>
+    <div class="group-sec"><h3>請假</h3><div class="chips">${chips(leav,'leave')}</div></div>
+    <div class="group-sec"><h3>缺席</h3><div class="chips">${chips(abs,'absent')}</div></div>
+    ${unm.length?`<div class="group-sec"><h3>未標記</h3><div class="chips">${chips(unm,'none')}</div></div>`:''}
+    <div class="action-bar">
+      <button class="ebtn" onclick="exportTxt()">匯出 TXT</button>
+      <button class="ebtn outline" onclick="exportCSV()">匯出 CSV</button>
+    </div>`;
+}
+
+function renderOverview(){
+  const rp=document.getElementById('rightBody');
+  const nc=dates.filter(x=>!x.cancelled);
+  const lbl=s=>s==='present'?'出':s==='leave'?'假':s==='absent'?'缺':'·';
+  const cls=s=>s||'none';
+  const headCells=dates.map(({date_str:ds,cancelled})=>
+    `<th class="${cancelled?'c-th':''}" style="min-width:50px"><div style="font-size:12px">${disp(ds)}</div>${cancelled?'<div style="font-size:10px;color:#888">停課</div>':''}</th>`
+  ).join('');
+  const footCells=dates.map(({date_str:ds,cancelled})=>{
+    if(cancelled) return `<td class="c-td">—</td>`;
+    const r=att[ds]||{};
+    const p=members.filter(x=>r[x]==='present').length;
+    const l=members.filter(x=>r[x]==='leave').length;
+    const a=members.filter(x=>r[x]==='absent').length;
+    return `<td><span style="color:#3aaa6a">${p}</span>/<span style="color:#d4882a">${l}</span>/<span style="color:#c0392b">${a}</span></td>`;
+  }).join('');
+  const bodyRows=members.map((p,i)=>{
+    const cells=dates.map(({date_str:ds,cancelled})=>{
+      if(cancelled) return `<td class="c-td"><span class="ov-cell none">—</span></td>`;
+      const s=(att[ds]||{})[p];
+      return `<td><span class="ov-cell ${cls(s)}">${lbl(s)}</span></td>`;
+    }).join('');
+    const pc=nc.filter(({date_str:ds})=>(att[ds]||{})[p]==='present').length;
+    const lc=nc.filter(({date_str:ds})=>(att[ds]||{})[p]==='leave').length;
+    const ac=nc.filter(({date_str:ds})=>(att[ds]||{})[p]==='absent').length;
+    return `<tr>
+      <td class="sticky-col"><span style="color:#ccc;font-size:11px;margin-right:6px">${i+1}</span>${p}</td>
+      ${cells}
+      <td style="border-left:1px solid #f0ece5;font-size:11px;white-space:nowrap">
+        <span style="color:#3aaa6a;font-weight:700">${pc}</span>/<span style="color:#d4882a">${lc}</span>/<span style="color:#c0392b">${ac}</span><span style="color:#ddd"> /${nc.length}</span>
+      </td>
+    </tr>`;
+  }).join('');
+  rp.innerHTML=`
+    <div><span class="view-title">全期總覽</span><span class="view-sub">${dates.length} 個日期・${members.length} 位學員</span></div>
+    <div class="legend">
+      <span><span class="leg-dot" style="background:#edf8f2"></span>出 出席</span>
+      <span><span class="leg-dot" style="background:#fdf3e3"></span>假 請假</span>
+      <span><span class="leg-dot" style="background:#fdecec"></span>缺 缺席</span>
+      <span style="color:#ddd">· 未標記</span>
+      <span style="color:#ccc;font-size:10px">右欄：出席/請假/缺席</span>
+    </div>
+    <div class="ov-wrap">
+      <table class="ov-table">
+        <thead><tr><th class="sticky-col">姓名</th>${headCells}<th style="min-width:75px">小計</th></tr></thead>
+        <tbody>${bodyRows}</tbody>
+        <tfoot><tr><td class="sticky-col">出/假/缺</td>${footCells}<td></td></tr></tfoot>
+      </table>
+    </div>
+    <div class="action-bar">
+      <button class="ebtn" onclick="exportTxt()">匯出本日 TXT</button>
+      <button class="ebtn outline" onclick="exportCSV()">匯出本日 CSV</button>
+      <button class="ebtn gold" onclick="exportAllCSV()">匯出全期 CSV</button>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════
+// RENDER STUDENT
+// ═══════════════════════════════════════════════
+function renderStudentRight(){
+  const grid=document.getElementById('leaveGrid');
+  grid.innerHTML=dates.map(({date_str:ds,cancelled})=>{
+    const s=(att[ds]||{})[user];
+    const isLeave=s==='leave', isPending=pendingLeave.has(ds);
+    const isDoneOther=s==='present'||s==='absent';
+    let cls='lcard', st='點選登記請假';
+    if(cancelled){ cls+=' cancelled-card'; st='停課'; }
+    else if(isLeave){ cls+=' done-leave'; st='已登記請假'; }
+    else if(isDoneOther){ cls+=' done-other'; st=s==='present'?'已出席':'已缺席'; }
+    else if(isPending){ cls+=' sel'; st='已選取'; }
+    const clickable=!cancelled&&!isLeave&&!isDoneOther;
+    return `<div class="${cls}" data-ds="${ds}" data-clickable="${clickable}">
+      <div class="lc-date">${dispFull(ds)}</div>
+      <div class="lc-status">${st}</div>
+    </div>`;
+  }).join('');
+  grid.querySelectorAll('.lcard[data-clickable="true"]').forEach(card=>{
+    card.addEventListener('click',()=>{
+      const ds=card.dataset.ds;
+      if(pendingLeave.has(ds)) pendingLeave.delete(ds); else pendingLeave.add(ds);
+      renderStudentRight();
+    });
+  });
+  document.getElementById('submitLeaveBtn').disabled=pendingLeave.size===0;
+  document.getElementById('leaveCount').textContent=pendingLeave.size?`已選取 ${pendingLeave.size} 個日期`:'尚未選取';
+  const confirmed=dates.filter(({date_str:ds,cancelled})=>!cancelled&&(att[ds]||{})[user]==='leave');
+  const sum=document.getElementById('leaveSummary');
+  if(confirmed.length){
+    sum.style.display='';
+    document.getElementById('leaveTags').innerHTML=confirmed.map(({date_str:ds})=>`<span class="leave-tag">${dispFull(ds)}</span>`).join('');
+  } else {
+    sum.style.display='none';
+  }
+}
+
+async function submitLeave(){
+  if(!pendingLeave.size) return;
+  showLoading('儲存請假中...');
+  const rows=[...pendingLeave].map(ds=>({ date_str:ds, person:user, status:'leave', updated_at:new Date().toISOString() }));
+  const { error } = await sb.from('attendance').upsert(rows, {onConflict:'date_str,person'});
+  if(!error){
+    pendingLeave.forEach(ds=>{ if(!att[ds]) att[ds]={}; att[ds][user]='leave'; });
+    pendingLeave.clear();
+  } else { alert('儲存失敗：'+error.message); }
+  hideLoading();
+  renderLeft(); renderStudentRight();
+}
+
+// ═══════════════════════════════════════════════
+// FULL RENDER
+// ═══════════════════════════════════════════════
+function renderAll(){
+  if(role==='teacher'){
+    renderDateBar();
+    document.getElementById('dateBar').style.display=curView==='single'?'':'none';
+    renderLeft(); renderRight();
+  } else {
+    renderLeft(); renderStudentRight();
+  }
+}
+
+// ═══════════════════════════════════════════════
+// ADD DATE / MEMBER
+// ═══════════════════════════════════════════════
+async function confirmDate(){
+  const ds=document.getElementById('inputDate').value;
+  if(!ds){ alert('請選擇日期'); return; }
+  if(dates.find(x=>x.date_str===ds)){ alert('此日期已存在'); closeModal('modalDate'); return; }
+  const cancelled=document.getElementById('inputCancelled').checked;
+  showLoading('新增日期中...');
+  const { error } = await sb.from('course_dates').insert({date_str:ds, cancelled});
+  if(!error){
+    dates.push({date_str:ds,cancelled});
+    dates.sort((a,b)=>a.date_str.localeCompare(b.date_str));
+    if(!att[ds]) att[ds]={};
+    members.forEach(p=>{ att[ds][p]=null; });
+    if(!cancelled) curDate=ds;
+  } else { alert('新增失敗：'+error.message); }
+  hideLoading();
+  closeModal('modalDate');
+  renderAll();
+}
+
+async function confirmMember(){
+  const name=document.getElementById('inputMember').value.trim();
+  if(!name){ alert('請輸入姓名'); return; }
+  if(members.includes(name)){ alert('此人員已存在'); return; }
+  showLoading('新增人員中...');
+  const { error } = await sb.from('members').insert({name, sort_order:members.length});
+  if(!error){
+    members.push(name);
+    dates.forEach(({date_str:ds})=>{ if(!att[ds]) att[ds]={}; att[ds][name]=null; });
+    refreshSel();
+    document.getElementById('inputMember').value='';
+  } else { alert('新增失敗：'+error.message); }
+  hideLoading();
+  closeModal('modalMember');
+  renderLeft();
+  if(role==='teacher') renderRight();
+}
+
+// ═══════════════════════════════════════════════
+// EXPORT
+// ═══════════════════════════════════════════════
+function exportTxt(){
+  const rec=att[curDate]||{};
+  const lbl=s=>s==='present'?'出席':s==='leave'?'請假':s==='absent'?'缺席':'未標記';
+  let t=`週六課程點名紀錄\n日期：${curDate} ${dispFull(curDate)}\n${'─'.repeat(28)}\n\n`;
+  members.forEach((p,i)=>t+=`${i+1}. ${p.padEnd(8,'　')}${lbl(rec[p])}\n`);
+  dl(t,`點名_${curDate}.txt`,'text/plain');
+}
+function exportCSV(){
+  const rec=att[curDate]||{};
+  const lbl=s=>s==='present'?'出席':s==='leave'?'請假':s==='absent'?'缺席':'未標記';
+  let c='#,姓名,狀態,日期\n';
+  members.forEach((p,i)=>{ const s=rec[p]; c+=`${i+1},${p},${lbl(s)},${s?curDate:''}\n`; });
+  dl(c,`點名_${curDate}.csv`,'text/csv');
+}
+function exportAllCSV(){
+  const lbl=s=>s==='present'?'出席':s==='leave'?'請假':s==='absent'?'缺席':'未標記';
+  const nc=dates.filter(x=>!x.cancelled);
+  let c='姓名,'+nc.map(x=>x.date_str).join(',')+'\n';
+  members.forEach(p=>{ c+=p+','+nc.map(({date_str:ds})=>lbl((att[ds]||{})[p])).join(',')+'\n'; });
+  dl(c,'點名_全期總覽.csv','text/csv');
+}
+function dl(content,filename,type){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['\uFEFF'+content],{type}));
+  a.download=filename; a.click();
+}
+</script>
+</body>
+</html>
